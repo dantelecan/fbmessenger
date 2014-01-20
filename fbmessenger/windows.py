@@ -8,6 +8,9 @@ TOAST_WIDTH = 330
 # Used for toast and chat window positioning
 _margin = 10
 
+# Chat position is not saved when the application closes
+_chat_rectangle = None
+
 def init():
     base_url = "https://www.facebook.com"
     base_url_override = settings.get_setting("BaseUrl")
@@ -30,11 +33,11 @@ def init():
     global chat_window
     chat_window = browser.BrowserWindow(base_url + "/desktop/client/chat.php")
     chat_window.set_size(420, 340)
-    def chat_window_moved_or_resized():
-        settings.set_setting(
-            "ChatWindowRectangle", chat_window.get_rectangle())
-    event.subscribe(chat_window.MOVE_EVENT, chat_window_moved_or_resized)
-    event.subscribe(chat_window.RESIZE_EVENT, chat_window_moved_or_resized)
+    def chat_window_moved():
+        global _chat_rectangle
+        _chat_rectangle = chat_window.get_rectangle()
+    event.subscribe(chat_window.MOVE_EVENT, chat_window_moved)
+    event.subscribe(chat_window.RESIZE_EVENT, chat_window_moved)
 
     global toast_window
     toast_window = browser.BrowserWindow(
@@ -92,9 +95,8 @@ def show_main_window():
 # aligned on the left (or right if not enough space). If moved or resized, the
 # position is remembered while the app is still running.
 def show_chat_window():
-    saved_rectangle = settings.get_setting("ChatWindowRectangle")
-    if saved_rectangle:
-        rect = saved_rectangle
+    if _chat_rectangle:
+        rect = _chat_rectangle
     else:
         desk_x, desk_y, desk_width, desk_height = \
             main_window.get_desktop_rectangle()

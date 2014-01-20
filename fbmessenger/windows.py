@@ -2,13 +2,11 @@ from . import application
 from . import browser
 from . import settings
 from . import event
+from PyQt5 import QtWidgets, QtGui
 
 TOAST_WIDTH = 330
 # Used for toast and chat window positioning
 _margin = 10
-
-# Chat position is not saved when the application closes
-_chat_rectangle = None
 
 def init():
     base_url = "https://www.facebook.com"
@@ -32,11 +30,11 @@ def init():
     global chat_window
     chat_window = browser.BrowserWindow(base_url + "/desktop/client/chat.php")
     chat_window.set_size(420, 340)
-    def chat_window_moved():
-        global _chat_rectangle
-        _chat_rectangle = chat_window.get_rectangle()
-    event.subscribe(chat_window.MOVE_EVENT, chat_window_moved)
-    event.subscribe(chat_window.RESIZE_EVENT, chat_window_moved)
+    def chat_window_moved_or_resized():
+        settings.set_setting(
+            "ChatWindowRectangle", chat_window.get_rectangle())
+    event.subscribe(chat_window.MOVE_EVENT, chat_window_moved_or_resized)
+    event.subscribe(chat_window.RESIZE_EVENT, chat_window_moved_or_resized)
 
     global toast_window
     toast_window = browser.BrowserWindow(
@@ -45,6 +43,41 @@ def init():
     # height of one toast -- this will be overridden but just in case
     toast_window.set_size(TOAST_WIDTH, 72)
     event.subscribe(settings.AUTH_CHANGED_EVENT, toast_window.hide)
+
+    # check if system tray should be enabled
+    if settings.get_setting("SystemTray", default=False):
+        create_sys_tray()
+
+def create_sys_tray():
+    global sysTray
+    sysIcon = QtGui.QIcon(application.resource_path("fbmessenger.png"))
+    sysTray = QtWidgets.QSystemTrayIcon(sysIcon, application.get_qt_application())
+    sysTray.activated.connect(on_sys_tray_activated)
+
+    sysTrayMenu = QtWidgets.QMenu()
+
+    global showHide
+    showHide = sysTrayMenu.addAction("Hide")
+    showHide.triggered.connect(on_sys_show_hide_activated)
+    quit = sysTrayMenu.addAction("Quit")
+    quit.triggered.connect(application.quit)
+    sysTray.setContextMenu(sysTrayMenu)
+    sysTray.setVisible(True)
+
+def on_sys_tray_activated(reason):
+    if reason == QtWidgets.QSystemTrayIcon.Trigger or reason == QtWidgets.QSystemTrayIcon.DoubleClick:
+        show_or_hide_main_window()
+
+def on_sys_show_hide_activated():
+    show_or_hide_main_window()
+
+def show_or_hide_main_window():
+    if main_window.is_visible():
+        main_window.hide()
+        showHide.setText("Show")
+    else:
+        main_window.show()
+        showHide.setText("Hide")
 
 # The main window's position is saved whenever it is moved or resized, so we
 # restore it when the window is created.
@@ -59,8 +92,9 @@ def show_main_window():
 # aligned on the left (or right if not enough space). If moved or resized, the
 # position is remembered while the app is still running.
 def show_chat_window():
-    if _chat_rectangle:
-        rect = _chat_rectangle
+    saved_rectangle = settings.get_setting("ChatWindowRectangle")
+    if saved_rectangle:
+        rect = saved_rectangle
     else:
         desk_x, desk_y, desk_width, desk_height = \
             main_window.get_desktop_rectangle()
